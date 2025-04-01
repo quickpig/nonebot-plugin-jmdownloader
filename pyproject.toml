@@ -5,7 +5,7 @@ description = "基于 Nonebot2 的 JMComic 插件"
 readme = "README.md"
 authors = [{ name = "Misty02600", email = "Misty02600@gmail.com" }]
 urls = { Repository = "https://github.com/Misty02600/nonebot-plugin-jmdownloader" }
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10, <4.0"
 dependencies = [
   "httpx>=0.27.0,<1.0.0",
   "nonebot2>=2.4.2,<3.0.0",

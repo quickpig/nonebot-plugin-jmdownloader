@@ -180,3 +180,5 @@ bot.py
 
 /tests
 /uv.lock
+/.vscode
+/.pre-commit-config.yaml
