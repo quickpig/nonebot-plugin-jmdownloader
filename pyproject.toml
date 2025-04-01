@@ -1,6 +1,6 @@
 [project]
 name = "nonebot-plugin-jmdownloader"
-version = "0.1.4"
+version = "0.1.5"
 description = "基于 Nonebot2 的 JMComic 插件"
 readme = "README.md"
 authors = [{ name = "Misty02600", email = "Misty02600@gmail.com" }]
