@@ -29,7 +29,9 @@ class JmComicDataManager:
             self.data["restricted_tags"] = self.DEFAULT_RESTRICTED_TAGS.copy()
 
         if "restricted_ids" not in self.data:
-            self.data["restricted_ids"] = []
+            self.data["restricted_ids"] = self.DEFAULT_RESTRICTED_IDS.copy()
+
+        self.save()
 
     def _load_data(self):
         """ 加载数据文件 """
