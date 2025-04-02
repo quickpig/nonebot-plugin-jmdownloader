@@ -110,8 +110,8 @@ plugins = ["nonebot_plugin_jmdownloader"]
 
 | 配置项            | 必填  | 默认值 |             说明               |
 | :---------------: | :---: | :----: | :----------------------------: |
-| jmcomic_username  |  是   |   无   | JM登录用户名       |
-| jmcomic_password  |  是   |   无   | JM登录密码         |
+| jmcomic_username  |  否   |   无   | JM登录用户名       |
+| jmcomic_password  |  否   |   无   | JM登录密码         |
 | jmcomic_proxies   |  否   | system | 网络代理地址                   |
 | jmcomic_log       |  否   | False  | 是否开启JMComic-Crawler-Python的日志输出               |
 | jmcomic_thread_count | 否 |   10   | 下载线程数量                   |
@@ -126,9 +126,9 @@ JMCOMIC_LOG=True
 JMCOMIC_PROXIES=127.0.0.1:10809
 # 下载线程数量 (线程越多对性能要求越高，范围 1~50)
 JMCOMIC_THREAD_COUNT=10
-# JMComic 登录用户名 (必填)
+# JMComic 登录用户名，如果不填则不登录，不登录时部分本子可能会受限
 JMCOMIC_USERNAME=******
-# JMComic 登录密码 (必填)
+# JMComic 登录密码
 JMCOMIC_PASSWORD=******
 # JMComic 是否默认启用所有群，建议关闭
 JMCOMIC_ALLOW_GROUPS=False
