@@ -120,7 +120,8 @@ async def _(bot: Bot, event: MessageEvent,arg: Message = CommandArg()):
                 name=f"{photo.idoname}.pdf"
             )
 
-    except ActionFailed:
+    except ActionFailed as e:
+        logger.warning(f"上传文件失败: {e}")
         await jm_download.finish("发送文件失败")
 
 
@@ -153,7 +154,8 @@ async def _(bot: Bot,event: MessageEvent,arg: Message = CommandArg()):
 
     try:
         await send_forward_message(bot, event, messages)
-    except ActionFailed:
+    except ActionFailed as e:
+        logger.warning(f"发送查询结果失败: {e}")
         await jm_query.finish("查询结果发送失败", reply_message=True)
 
 
@@ -192,7 +194,8 @@ async def _(bot: Bot,event: MessageEvent,arg: Message = CommandArg()):
 
     try:
         await send_forward_message(bot, event, messages)
-    except ActionFailed:
+    except ActionFailed as e:
+        logger.warning(f"发送搜索结果失败: {e}")
         await jm_search.finish("搜索结果发送失败", reply_message=True)
 
 
@@ -236,7 +239,7 @@ async def _( bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
             await jm_set_folder.finish(f"已设置本子储存文件夹")
 
         except ActionFailed as e:
-            logger.warning("创建文件夹失败")
+            logger.warning("创建文件夹失败: {e}")
             await jm_set_folder.finish("未找到该文件夹,主动创建文件夹失败")
 
 # endregion
