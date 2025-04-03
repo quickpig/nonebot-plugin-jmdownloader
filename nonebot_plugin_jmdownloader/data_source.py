@@ -11,7 +11,7 @@ from nonebot_plugin_localstore import get_plugin_data_dir
 class JmComicDataManager:
     """ 用于管理与 JMComic 插件相关的数据 """
 
-    DEFAULT_RESTRICTED_TAGS = ["獵奇", "重口", "YAOI", "yaoi", "男同", "血腥"]
+    DEFAULT_RESTRICTED_TAGS = ["獵奇", "重口", "YAOI", "yaoi", "男同", "血腥", "猎奇" ]
     DEFAULT_RESTRICTED_IDS = [
         "136494", "323666", "350234", "363848", "405848",
         "454278", "481481", "559716", "611650", "629252",

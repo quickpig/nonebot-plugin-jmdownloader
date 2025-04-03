@@ -1,8 +1,7 @@
 from pathlib import Path
-from typing import List
-
-from nonebot import get_plugin_config, require
-from pydantic import BaseModel, Field
+from typing import Any
+from nonebot import get_plugin_config, require, logger
+from pydantic import BaseModel, Field, validator
 
 require("nonebot_plugin_localstore")
 
@@ -18,35 +17,23 @@ class Config(BaseModel):
     jmcomic_allow_groups: bool = Field(default=False, description="是否默认启用所有群")
     jmcomic_user_limits: int = Field(default=5, description="每位用户的每周下载限制次数")
     jmcomic_modify_real_md5: bool = Field(default=False, description="是否真正修改PDF文件的MD5值")
-    jmcomic_blocked_keywords: List[str] = Field(default=[], description="搜索屏蔽词列表")
-    jmcomic_blocked_tags: List[str] = Field(default=[], description="搜索标签屏蔽列表")
     jmcomic_blocked_message: str = Field(default="猫猫吃掉了一个不豪吃的本子", description="搜索屏蔽时显示的消息")
 
+
+    @validator('jmcomic_password', 'jmcomic_username', pre=True)
+    def convert_to_string(cls, v):
+        if v is not None:
+            return str(v)
+        return v
+    
 plugin_config = get_plugin_config(Config)
+logger.debug(f"Password type: {type(plugin_config.jmcomic_password)}")
 
 plugin_cache_dir: Path = get_plugin_cache_dir()
 cache_dir = plugin_cache_dir.as_posix()
 
 username = plugin_config.jmcomic_username
 password = plugin_config.jmcomic_password
-
-# 处理带方括号的字符串情况
-if isinstance(username, str) and username.startswith('[') and username.endswith(']'):
-    username = username.strip('[]').strip().strip('"\'')
-if isinstance(password, str) and password.startswith('[') and password.endswith(']'):
-    password = password.strip('[]').strip().strip('"\'')
-
-# 如果是列表，取第一个元素
-if isinstance(username, list) and username:
-    username = username[0]
-if isinstance(password, list) and password:
-    password = password[0]
-
-# 如果是数字，转为字符串
-if isinstance(username, int):
-    username = str(username)
-if isinstance(password, int):
-    password = str(password)
 
 config_data = f"""
 log: {plugin_config.jmcomic_log}

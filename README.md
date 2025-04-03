@@ -32,6 +32,27 @@ JMComic搜索、下载插件，支持全局屏蔽jm号和tag，支持上传至�
 
 ## 💿 安装
 
+<details open>
+<summary>使用 nb-cli 安装</summary>
+在 NoneBot2 项目的根目录下打开命令行，输入以下指令即可安装
+
+```bash
+nb plugin install nonebot-plugin-jmdownloader --upgrade
+```
+使用 **pypi** 源安装
+
+```bash
+nb plugin install nonebot-plugin-jmdownloader --upgrade -i "https://pypi.org/simple"
+```
+使用**清华源**安装
+
+```bash
+nb plugin install nonebot-plugin-jmdownloader --upgrade -i "https://pypi.tuna.tsinghua.edu.cn/simple"
+```
+</details>
+
+<details>
+
 <summary>使用包管理器安装</summary>
 在 NoneBot2 项目的插件目录下，打开命令行，根据你使用的包管理器，输入相应的安装命令
 
@@ -98,8 +119,6 @@ plugins = ["nonebot_plugin_jmdownloader"]
 | jmcomic_allow_groups | 否 |   False   | 是否默认启用所有群                   |
 | jmcomic_user_limits | 否 |   5   | 每位用户的每周下载限制次数                   |
 | jmcomic_modify_real_md5 | 否 | False | 是否真正修改PDF文件的MD5值 |
-| jmcomic_blocked_keywords | 否 | [] | 搜索关键词屏蔽列表 |
-| jmcomic_blocked_tags | 否 | [] | 搜索标签屏蔽列表 |
 | jmcomic_blocked_message | 否 | "猫猫吃掉了一个不豪吃的本子" | 搜索屏蔽时显示的消息 |
 
 **示例：**
@@ -120,16 +139,13 @@ JMCOMIC_ALLOW_GROUPS=False
 JMCOMIC_USER_LIMITS=5
 # 是否真正修改PDF文件的MD5值（增强防和谐但可能增加流量消耗）
 JMCOMIC_MODIFY_REAL_MD5=False
-# 搜索关键词屏蔽列表（JSON数组格式）
-JMCOMIC_BLOCKED_KEYWORDS=["血腥", "猎奇", "纯爱"]
-# 搜索标签屏蔽列表（JSON数组格式）
-JMCOMIC_BLOCKED_TAGS=["獵奇", "NTR", "yaoi"]
 # 搜索屏蔽时显示的消息
 JMCOMIC_BLOCKED_MESSAGE="猫猫吃掉了一个不豪吃的本子"
-# JMComic 登录用户名 (必填)
-JMCOMIC_USERNAME=['123456']
-JMCOMIC_PASSWORD=['123456']
 ```
+
+
+我的服务器为2核2G 4M，下载并发送10M的文件约需要1-2分钟
+
 
 
 ## 🔄 更新功能

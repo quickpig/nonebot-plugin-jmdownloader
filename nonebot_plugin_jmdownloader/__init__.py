@@ -53,6 +53,30 @@ try:
 except JmcomicException as e:
     logger.error(f"初始化失败: { e }")
 
+# 添加用于检查搜索关键词的函数
+def check_search_keywords(search_query: str) -> bool:
+    """
+    检查搜索关键词是否包含禁止的关键词
+    
+    Args:
+        search_query: 搜索关键词
+    
+    Returns:
+        bool: 如果包含禁止关键词返回True，否则返回False
+    """
+    # 从data_manager获取restricted_tags作为关键词检查基础
+    restricted_tags = data_manager.data.setdefault("restricted_tags", [])
+    
+    # 将搜索关键词转为小写进行比较
+    search_query_lower = search_query.lower()
+    
+    # 检查是否包含任何禁止关键词
+    for tag in restricted_tags:
+        if tag.lower() in search_query_lower:
+            return True
+    
+    return False
+
 # region jm功能指令
 jm_download = on_command("jm下载", aliases={"JM下载"}, block=True, rule=check_group_and_user)
 @jm_download.handle()
@@ -85,13 +109,6 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
         else:
             await jm_download.finish("该本子（或其tag）被禁止下载！")
 
-    # 检查标签是否在屏蔽列表中
-    blocked_tags = plugin_config.jmcomic_blocked_tags
-    if photo and hasattr(photo, 'tags') and photo.tags:
-        has_blocked_tag = any(tag in blocked_tags for tag in photo.tags)
-        if has_blocked_tag:
-            blocked_message = plugin_config.jmcomic_blocked_message
-            await jm_download.finish(blocked_message)
 
     if str(user_id) not in bot.config.superusers:
         data_manager.decrease_user_limit(user_id, 1)
@@ -183,13 +200,6 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
     if photo is None:
         await jm_query.finish("查询时发生错误")
 
-    # 检查标签是否在屏蔽列表中
-    blocked_tags = plugin_config.jmcomic_blocked_tags
-    if photo and hasattr(photo, 'tags') and photo.tags:
-        has_blocked_tag = any(tag in blocked_tags for tag in photo.tags)
-        if has_blocked_tag:
-            blocked_message = plugin_config.jmcomic_blocked_message
-            await jm_query.finish(blocked_message)
 
     message = Message(f'查询到jm{photo.id}: {photo.title}\ntags:{photo.tags}')
     avatar = await download_avatar(photo.id)
@@ -216,9 +226,8 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
     if not search_query:
         await jm_search.finish("请输入要搜索的内容")
 
-    # 检查搜索关键词是否包含屏蔽词
-    blocked_keywords = plugin_config.jmcomic_blocked_keywords
-    is_blocked = any(keyword.lower() in search_query.lower() for keyword in blocked_keywords)
+    # 检查搜索关键词是否包含禁止的标签
+    is_blocked = check_search_keywords(search_query)
     if is_blocked:
         blocked_message = plugin_config.jmcomic_blocked_message
         await jm_search.finish(blocked_message)
@@ -254,15 +263,13 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
 
     # 准备显示消息列表
     messages = []
-    blocked_tags = plugin_config.jmcomic_blocked_tags
     blocked_message = plugin_config.jmcomic_blocked_message
     
     for (album_id, title), photo, avatar in zip(current_results, album_details, avatars):
         # 检查标签是否应该被屏蔽
         if photo and hasattr(photo, 'tags') and photo.tags:
-            # 检查是否有屏蔽标签
-            has_blocked_tag = any(tag in blocked_tags for tag in photo.tags)
-            if has_blocked_tag:
+            # 使用data_manager.has_restricted_tag替代blocked_tags检查
+            if data_manager.has_restricted_tag(photo.tags):
                 # 添加屏蔽提示到转发消息中
                 message = Message(blocked_message)
                 message_node = MessageSegment("node", {"name": "jm搜索结果", "content": message})
@@ -379,7 +386,6 @@ async def handle_jm_next_page(bot: Bot, event: MessageEvent):
     
     # 构建消息
     messages = []
-    blocked_tags = plugin_config.jmcomic_blocked_tags
     blocked_message = plugin_config.jmcomic_blocked_message
     
     # 获取详细信息和头像
@@ -387,11 +393,10 @@ async def handle_jm_next_page(bot: Bot, event: MessageEvent):
     avatars = await asyncio.gather(*(download_avatar(album_id) for album_id, _ in current_results))
     
     for (album_id, title), photo, avatar in zip(current_results, album_details, avatars):
-        # 检查标签是否应该被屏蔽
+        # 检查标签是否应该被屏蔽 - 改用data_manager.has_restricted_tag
         if photo and hasattr(photo, 'tags') and photo.tags:
-            # 检查是否有屏蔽标签
-            has_blocked_tag = any(tag in blocked_tags for tag in photo.tags)
-            if has_blocked_tag:
+            # 使用data_manager.has_restricted_tag检查
+            if data_manager.has_restricted_tag(photo.tags):
                 # 添加屏蔽提示到转发消息中
                 message = Message(blocked_message)
                 message_node = MessageSegment("node", {"name": "jm搜索结果", "content": message})
@@ -618,7 +623,6 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
         msg += "以下群已禁用插件功能：\n" + " ".join(success_list)
 
     await jm_disable_group.finish(msg.strip() or "没有做任何处理。")
-
 
 jm_enable_here = on_command("开启jm", aliases={"开启JM"}, permission=SUPERUSER, block=True)
 @jm_enable_here.handle()
