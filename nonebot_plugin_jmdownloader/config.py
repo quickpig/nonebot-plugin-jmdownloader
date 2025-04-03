@@ -35,7 +35,12 @@ cache_dir = plugin_cache_dir.as_posix()
 # 根据用户名和密码是否提供决定是否构造登录配置块
 login_block = ""
 if plugin_config.jmcomic_username is not None and plugin_config.jmcomic_password is not None:
-    login_block = f"  after_init:\n    - plugin: login\n      kwargs:\n        username: {plugin_config.jmcomic_username}\n        password: {plugin_config.jmcomic_password}"
+    login_block = f"""  after_init:
+    - plugin: login
+      kwargs:
+        username: {plugin_config.jmcomic_username}
+        password: {plugin_config.jmcomic_password}
+"""
 
 
 config_data = f"""
@@ -59,12 +64,7 @@ dir_rule:
   rule: Bd_Pid
 
 plugins:
-  after_init:
-    - plugin: login
-      kwargs:
-        username: {username}
-        password: {password}
-
+{login_block}
   after_photo:
     - plugin: img2pdf
       kwargs:
