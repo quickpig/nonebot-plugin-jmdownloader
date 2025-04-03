@@ -1,4 +1,6 @@
 import asyncio
+import random
+import struct
 from io import BytesIO
 
 import httpx
@@ -56,10 +58,11 @@ async def download_photo_async(client: JmcomicClient, downloader: JmDownloader, 
     return await asyncio.to_thread(download_photo, client, downloader, photo)
 
 
-def search_album(client: JmcomicClient, search_query: str):
+def search_album(client: JmcomicClient, search_query: str, page: int = 1):
+    """搜索本子，支持指定页码"""
     try:
-        page = client.search_site(search_query=search_query, page=1)
-        return page
+        page_results = client.search_site(search_query=search_query, page=page)
+        return page_results
 
     except JsonResolveFailException as e:
         resp = e.resp
@@ -73,8 +76,8 @@ def search_album(client: JmcomicClient, search_query: str):
 
     return None
 
-async def search_album_async(client: JmcomicClient, search_query: str):
-    return await asyncio.to_thread(search_album, client, search_query)
+async def search_album_async(client: JmcomicClient, search_query: str, page: int = 1):
+    return await asyncio.to_thread(search_album, client, search_query, page)
 
 
 async def download_avatar(album_id: int | str) -> BytesIO | None:
@@ -172,6 +175,45 @@ async def group_is_enabled(bot: Bot, event: MessageEvent) -> bool:
             return False
 
     return True
+
+def modify_pdf_md5(original_pdf_path, output_path):
+    """
+    修改PDF文件的MD5值，但保持文件内容可用
+    通过在文件末尾添加随机字节来改变MD5
+    
+    Args:
+        original_pdf_path: 原始PDF文件路径
+        output_path: 输出的PDF文件路径
+    
+    Returns:
+        bool: 是否成功修改
+    """
+    try:
+        # 读取原始PDF
+        with open(original_pdf_path, 'rb') as f:
+            content = f.read()
+        
+        # 生成随机字节
+        random_bytes = struct.pack('d', random.random())
+        
+        # 添加随机注释到PDF末尾
+        # PDF规范允许在文件末尾添加注释，以%%EOF结尾
+        # 我们在%%EOF之前添加随机内容作为注释
+        if content.endswith(b'%%EOF'):
+            # 如果PDF以%%EOF结尾，在它前面添加注释
+            modified_content = content[:-5] + b'\n% Random: ' + random_bytes + b'\n%%EOF'
+        else:
+            # 如果没有，直接在末尾添加注释和EOF标记
+            modified_content = content + b'\n% Random: ' + random_bytes + b'\n%%EOF'
+        
+        # 写入修改后的内容
+        with open(output_path, 'wb') as f:
+            f.write(modified_content)
+        
+        return True
+    except Exception as e:
+        logger.error(f"修改PDF MD5失败: {e}")
+        return False
 
 check_group_and_user = Rule(group_is_enabled) & Rule(user_not_in_blacklist)
 
