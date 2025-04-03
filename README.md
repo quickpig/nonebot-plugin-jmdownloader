@@ -169,11 +169,7 @@ JMCOMIC_BLOCKED_MESSAGE="猫猫吃掉了一个不豪吃的本子"
 - 自动处理列表格式和特殊字符
 - 更好的登录状态处理和错误提示
 
-```yaml
-# JMComic 登录用户名 (必填)
-JMCOMIC_USERNAME=['123456']
-JMCOMIC_PASSWORD=['123456']
-```
+
 ## 🎉 使用
 ### 指令表
 |      指令      |     权限     | 需要@ |   范围   |                  说明                  |
