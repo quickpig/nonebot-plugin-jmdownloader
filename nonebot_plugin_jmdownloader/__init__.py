@@ -53,29 +53,6 @@ try:
 except JmcomicException as e:
     logger.error(f"初始化失败: { e }")
 
-# 添加用于检查搜索关键词的函数
-def check_search_keywords(search_query: str) -> bool:
-    """
-    检查搜索关键词是否包含禁止的关键词
-    
-    Args:
-        search_query: 搜索关键词
-    
-    Returns:
-        bool: 如果包含禁止关键词返回True，否则返回False
-    """
-    # 从data_manager获取restricted_tags作为关键词检查基础
-    restricted_tags = data_manager.data.setdefault("restricted_tags", [])
-    
-    # 将搜索关键词转为小写进行比较
-    search_query_lower = search_query.lower()
-    
-    # 检查是否包含任何禁止关键词
-    for tag in restricted_tags:
-        if tag.lower() in search_query_lower:
-            return True
-    
-    return False
 
 # region jm功能指令
 jm_download = on_command("jm下载", aliases={"JM下载"}, block=True, rule=check_group_and_user)
@@ -121,26 +98,22 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
 
     try:
         # 检查PDF是否已存在
-        original_pdf_path = f"{cache_dir}/{photo.id}.pdf"
+        pdf_path = f"{cache_dir}/{photo.id}.pdf"
         
         # 如果不存在，则下载
-        if not os.path.exists(original_pdf_path):
+        if not os.path.exists(pdf_path):
             if not await download_photo_async(client, downloader, photo):
                 await jm_download.finish("下载失败")
         
-        # 生成随机后缀
-        random_suffix = hashlib.md5(str(time.time() + random.random()).encode()).hexdigest()[:8]
-        renamed_pdf_path = f"{cache_dir}/{photo.id}_{random_suffix}.pdf"
-        
-        # 根据配置决定是否真正修改MD5
+        # 根据配置决定是否需要修改MD5
         if plugin_config.jmcomic_modify_real_md5:
-            # 修改文件内容的MD5
-            if not modify_pdf_md5(original_pdf_path, renamed_pdf_path):
-                # 如果修改失败，退回到复制方案
-                shutil.copy2(original_pdf_path, renamed_pdf_path)
-        else:
-            # 仅复制文件并重命名
-            shutil.copy2(original_pdf_path, renamed_pdf_path)
+            # 生成随机后缀
+            random_suffix = hashlib.md5(str(time.time() + random.random()).encode()).hexdigest()[:8]
+            renamed_pdf_path = f"{cache_dir}/{photo.id}_{random_suffix}.pdf"
+            
+            modified = await asyncio.to_thread(modify_pdf_md5, pdf_path, renamed_pdf_path)
+            if modified:
+                pdf_path = renamed_pdf_path
 
         try:
             if isinstance(event, GroupMessageEvent):
@@ -150,15 +123,15 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
                     await bot.call_api(
                         "upload_group_file",
                         group_id=event.group_id,
-                        file=renamed_pdf_path,
-                        name=f"{photo.id}.pdf",  # 显示名称仍然保持原样
+                        file=pdf_path,
+                        name=f"{photo.id}.pdf",  # 显示名称保持原样
                         folder_id=folder_id
                     )
                 else:
                     await bot.call_api(
                         "upload_group_file",
                         group_id=event.group_id,
-                        file=renamed_pdf_path,
+                        file=pdf_path,
                         name=f"{photo.id}.pdf"
                     )
 
@@ -166,17 +139,12 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
                 await bot.call_api(
                     "upload_private_file",
                     user_id=event.user_id,
-                    file=renamed_pdf_path,
+                    file=pdf_path,
                     name=f"{photo.id}.pdf"
                 )
 
-            # 删除临时重命名的文件
-            os.remove(renamed_pdf_path)
-
         except ActionFailed:
-            # 清理临时文件
-            if os.path.exists(renamed_pdf_path):
-                os.remove(renamed_pdf_path)
+           
             await jm_download.finish("发送文件失败")
 
     except Exception as e:
@@ -227,7 +195,7 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
         await jm_search.finish("请输入要搜索的内容")
 
     # 检查搜索关键词是否包含禁止的标签
-    is_blocked = check_search_keywords(search_query)
+    is_blocked = data_manager.check_search_keywords(search_query)
     if is_blocked:
         blocked_message = plugin_config.jmcomic_blocked_message
         await jm_search.finish(blocked_message)

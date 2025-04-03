@@ -11,7 +11,7 @@ from nonebot_plugin_localstore import get_plugin_data_dir
 class JmComicDataManager:
     """ 用于管理与 JMComic 插件相关的数据 """
 
-    DEFAULT_RESTRICTED_TAGS = ["獵奇", "重口", "YAOI", "yaoi", "男同", "血腥", "猎奇" ]
+    DEFAULT_RESTRICTED_TAGS = ["獵奇", "重口", "YAOI", "yaoi", "男同", "血腥", "猎奇", "虐杀", "恋尸癖" ]
     DEFAULT_RESTRICTED_IDS = [
         "136494", "323666", "350234", "363848", "405848",
         "454278", "481481", "559716", "611650", "629252",
@@ -29,7 +29,9 @@ class JmComicDataManager:
             self.data["restricted_tags"] = self.DEFAULT_RESTRICTED_TAGS.copy()
 
         if "restricted_ids" not in self.data:
-            self.data["restricted_ids"] = []
+            self.data["restricted_ids"] = self.DEFAULT_RESTRICTED_IDS.copy()
+
+        self.save()
 
     def _load_data(self):
         """ 加载数据文件 """
@@ -252,6 +254,29 @@ class JmComicDataManager:
         if str(user_id) in search_states:
             del search_states[str(user_id)]
             self.save()
+
+    def check_search_keywords(self, search_query: str) -> bool:
+        """
+        检查搜索关键词是否包含禁止的关键词
+        
+        Args:
+            search_query: 搜索关键词
+            
+        Returns:
+            bool: 如果包含禁止关键词返回True，否则返回False
+        """
+        # 获取restricted_tags作为关键词检查基础
+        restricted_tags = self.data.setdefault("restricted_tags", [])
+        
+        # 将搜索关键词转为小写进行比较
+        search_query_lower = search_query.lower()
+        
+        # 检查是否包含任何禁止关键词
+        for tag in restricted_tags:
+            if tag.lower() in search_query_lower:
+                return True
+        
+        return False
 
 
 data_manager = JmComicDataManager()
