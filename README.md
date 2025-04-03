@@ -32,26 +32,6 @@ JMComic搜索、下载插件，支持全局屏蔽jm号和tag，支持上传至�
 
 ## 💿 安装
 
-<details open>
-<summary>使用 nb-cli 安装</summary>
-在 NoneBot2 项目的根目录下打开命令行，输入以下指令即可安装
-
-```bash
-nb plugin install nonebot-plugin-jmdownloader --upgrade
-```
-使用 **pypi** 源安装
-
-```bash
-nb plugin install nonebot-plugin-jmdownloader --upgrade -i "https://pypi.org/simple"
-```
-使用**清华源**安装
-
-```bash
-nb plugin install nonebot-plugin-jmdownloader --upgrade -i "https://pypi.tuna.tsinghua.edu.cn/simple"
-```
-</details>
-
-<details>
 <summary>使用包管理器安装</summary>
 在 NoneBot2 项目的插件目录下，打开命令行，根据你使用的包管理器，输入相应的安装命令
 
@@ -117,6 +97,10 @@ plugins = ["nonebot_plugin_jmdownloader"]
 | jmcomic_thread_count | 否 |   10   | 下载线程数量                   |
 | jmcomic_allow_groups | 否 |   False   | 是否默认启用所有群                   |
 | jmcomic_user_limits | 否 |   5   | 每位用户的每周下载限制次数                   |
+| jmcomic_modify_real_md5 | 否 | False | 是否真正修改PDF文件的MD5值 |
+| jmcomic_blocked_keywords | 否 | [] | 搜索关键词屏蔽列表 |
+| jmcomic_blocked_tags | 否 | [] | 搜索标签屏蔽列表 |
+| jmcomic_blocked_message | 否 | "猫猫吃掉了一个不豪吃的本子" | 搜索屏蔽时显示的消息 |
 
 **示例：**
 ```yaml
@@ -134,10 +118,46 @@ JMCOMIC_PASSWORD=******
 JMCOMIC_ALLOW_GROUPS=False
 # JMComic 每位用户的每周下载限制次数
 JMCOMIC_USER_LIMITS=5
+# 是否真正修改PDF文件的MD5值（增强防和谐但可能增加流量消耗）
+JMCOMIC_MODIFY_REAL_MD5=False
+# 搜索关键词屏蔽列表（JSON数组格式）
+JMCOMIC_BLOCKED_KEYWORDS=["血腥", "猎奇", "纯爱"]
+# 搜索标签屏蔽列表（JSON数组格式）
+JMCOMIC_BLOCKED_TAGS=["獵奇", "NTR", "yaoi"]
+# 搜索屏蔽时显示的消息
+JMCOMIC_BLOCKED_MESSAGE="猫猫吃掉了一个不豪吃的本子"
+# JMComic 登录用户名 (必填)
+JMCOMIC_USERNAME=['123456']
+JMCOMIC_PASSWORD=['123456']
 ```
 
-我的服务器为2核2G 4M，下载并发送10M的文件约需要1-2分钟
 
+## 🔄 更新功能
+
+### 1. 防和谐功能增强
+- **文件名随机化**: 每次上传PDF时添加随机MD5后缀，但保持显示名称不变
+- **真实MD5修改** (可选): 通过环境变量`JMCOMIC_MODIFY_REAL_MD5`控制是否修改PDF内容
+  - 启用后，会在PDF末尾添加随机字节数据，改变文件的实际哈希值
+  - 禁用时，仅修改文件名，不改变文件内容（节省流量）
+
+### 2. 搜索功能优化
+- **搜索关键词屏蔽**: 通过环境变量`JMCOMIC_BLOCKED_KEYWORDS`设置屏蔽词列表
+- **标签屏蔽**: 通过环境变量`JMCOMIC_BLOCKED_TAGS`设置要屏蔽的标签列表
+- **自定义提示**: 通过环境变量`JMCOMIC_BLOCKED_MESSAGE`设置屏蔽提示信息
+- **下一页逻辑修复**: 修复了搜索下一页从第一页开始的问题
+- **标签过滤**: 在搜索结果中显示"猫猫吃掉了一个不豪吃的本子"来替代敏感内容
+- **详细信息展示**: 搜索结果中增加详细信息展示（作者、分类、标签等）
+
+### 3. 登录功能增强
+- 支持多种格式的用户名和密码配置
+- 自动处理列表格式和特殊字符
+- 更好的登录状态处理和错误提示
+
+```yaml
+# JMComic 登录用户名 (必填)
+JMCOMIC_USERNAME=['123456']
+JMCOMIC_PASSWORD=['123456']
+```
 ## 🎉 使用
 ### 指令表
 |      指令      |     权限     | 需要@ |   范围   |                  说明                  |
@@ -145,6 +165,7 @@ JMCOMIC_USER_LIMITS=5
 |   jm下载 [id]    |  群员  |  否   | 群聊/私聊| 下载指定的 JMComic 本子到群文件或私聊  |
 |   jm查询 [id]    |  群员  |  否   | 群聊/私聊| 查询指定的 JMComic 本子信息及封面图   |
 |  jm搜索 [关键词] |  群员  |  否   | 群聊/私聊| 搜索 JMComic 网站的漫画并返回列表     |
+|  jm下一页      |  群员  |  否   | 群聊/私聊| 显示搜索结果的下一页     |
 |  jm设置文件夹 [文件夹名]|  管理员  |  否   | 群聊| 设置群聊内本子的上传文件夹     |
 | jm拉黑 [@用户] | 管理员 | 否 | 群聊 | 将用户加入当前群的黑名单 |
 | jm解除拉黑 [@用户] | 管理员 | 否 | 群聊 | 将用户移出当前群的黑名单 |
@@ -160,6 +181,7 @@ JMCOMIC_USER_LIMITS=5
 - 设置文件夹需要协议端API支持，bot会先读取群内是否有该文件夹，如果没有会尝试创建。
 - Bot会在每天凌晨3点清理缓存文件夹。
 - 默认已经屏蔽了一些常见的令人不适的本子，可以在数据储存文件里自行修改。
+- 支持配置标签和关键词屏蔽，被屏蔽的内容会显示自定义提示语。
 
 ### 🎨 效果图
 ![search](img/search.png)
