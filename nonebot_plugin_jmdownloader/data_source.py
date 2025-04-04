@@ -11,7 +11,7 @@ from nonebot_plugin_localstore import get_plugin_data_dir
 class JmComicDataManager:
     """ 用于管理与 JMComic 插件相关的数据 """
 
-    DEFAULT_RESTRICTED_TAGS = ["獵奇", "重口", "YAOI", "yaoi", "男同", "血腥"]
+    DEFAULT_RESTRICTED_TAGS = ["獵奇", "重口", "YAOI", "yaoi", "男同", "血腥", "猎奇", "虐杀", "恋尸癖" ]
     DEFAULT_RESTRICTED_IDS = [
         "136494", "323666", "350234", "363848", "405848",
         "454278", "481481", "559716", "611650", "629252",
@@ -193,5 +193,90 @@ class JmComicDataManager:
             if t in restricted_tags:
                 return True
         return False
+    
+    # ------------------- 搜索分页管理 -------------------
+    def save_search_state(self, user_id: int, search_query: str, current_page: int, total_results: list):
+        """保存用户的搜索状态，包括搜索关键词、当前页码和搜索结果"""
+        search_states = self.data.setdefault("search_states", {})
+        
+        # 确保total_results是可序列化的格式
+        # 将搜索结果转换为简单的 [album_id, title] 列表
+        serializable_results = []
+        for item in total_results:
+            # 处理元组格式 (album_id, title)
+            if isinstance(item, tuple) and len(item) >= 2:
+                album_id, title = item[0], item[1]
+                serializable_results.append([str(album_id), title])
+            # 处理列表格式 [album_id, title]
+            elif isinstance(item, list) and len(item) >= 2:
+                album_id, title = item[0], item[1]
+                serializable_results.append([str(album_id), title])
+            # 处理字典格式 {'id': album_id, 'name': title}
+            elif isinstance(item, dict) and 'id' in item and ('name' in item or 'title' in item):
+                album_id = item.get('id', '')
+                title = item.get('name', '') or item.get('title', '')
+                if album_id and title:
+                    serializable_results.append([str(album_id), title])
+            # 尝试其他方式获取属性
+            else:
+                try:
+                    album_id = getattr(item, 'id', None) or getattr(item, 'album_id', None)
+                    title = getattr(item, 'name', None) or getattr(item, 'title', None)
+                    if album_id and title:
+                        serializable_results.append([str(album_id), title])
+                    else:
+                        # 最后尝试作为序列访问
+                        album_id, title = item[0], item[1]
+                        serializable_results.append([str(album_id), title])
+                except (IndexError, AttributeError, TypeError) as e:
+                    logger.warning(f"无法序列化搜索结果项: {item}, 错误: {e}")
+        
+        search_states[str(user_id)] = {
+            "query": search_query,
+            "current_page": current_page,
+            "total_results": serializable_results,
+            "results_per_page": 10
+        }
+        
+        # 记录保存了多少条结果
+        logger.debug(f"为用户 {user_id} 保存了 {len(serializable_results)} 条搜索结果")
+        
+        self.save()
+
+    def get_search_state(self, user_id: int):
+        """获取用户的搜索状态"""
+        search_states = self.data.get("search_states", {})
+        return search_states.get(str(user_id))
+
+    def clear_search_state(self, user_id: int):
+        """清除用户的搜索状态"""
+        search_states = self.data.get("search_states", {})
+        if str(user_id) in search_states:
+            del search_states[str(user_id)]
+            self.save()
+
+    def check_search_keywords(self, search_query: str) -> bool:
+        """
+        检查搜索关键词是否包含禁止的关键词
+        
+        Args:
+            search_query: 搜索关键词
+            
+        Returns:
+            bool: 如果包含禁止关键词返回True，否则返回False
+        """
+        # 获取restricted_tags作为关键词检查基础
+        restricted_tags = self.data.setdefault("restricted_tags", [])
+        
+        # 将搜索关键词转为小写进行比较
+        search_query_lower = search_query.lower()
+        
+        # 检查是否包含任何禁止关键词
+        for tag in restricted_tags:
+            if tag.lower() in search_query_lower:
+                return True
+        
+        return False
+
 
 data_manager = JmComicDataManager()
