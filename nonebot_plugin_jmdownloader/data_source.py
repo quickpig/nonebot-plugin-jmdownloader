@@ -1,4 +1,7 @@
 import json
+from datetime import datetime, timedelta
+from typing import Optional, List
+from dataclasses import dataclass, field
 
 from nonebot import logger, require
 
@@ -193,90 +196,52 @@ class JmComicDataManager:
             if t in restricted_tags:
                 return True
         return False
-    
-    # ------------------- 搜索分页管理 -------------------
-    def save_search_state(self, user_id: int, search_query: str, current_page: int, total_results: list):
-        """保存用户的搜索状态，包括搜索关键词、当前页码和搜索结果"""
-        search_states = self.data.setdefault("search_states", {})
-        
-        # 确保total_results是可序列化的格式
-        # 将搜索结果转换为简单的 [album_id, title] 列表
-        serializable_results = []
-        for item in total_results:
-            # 处理元组格式 (album_id, title)
-            if isinstance(item, tuple) and len(item) >= 2:
-                album_id, title = item[0], item[1]
-                serializable_results.append([str(album_id), title])
-            # 处理列表格式 [album_id, title]
-            elif isinstance(item, list) and len(item) >= 2:
-                album_id, title = item[0], item[1]
-                serializable_results.append([str(album_id), title])
-            # 处理字典格式 {'id': album_id, 'name': title}
-            elif isinstance(item, dict) and 'id' in item and ('name' in item or 'title' in item):
-                album_id = item.get('id', '')
-                title = item.get('name', '') or item.get('title', '')
-                if album_id and title:
-                    serializable_results.append([str(album_id), title])
-            # 尝试其他方式获取属性
-            else:
-                try:
-                    album_id = getattr(item, 'id', None) or getattr(item, 'album_id', None)
-                    title = getattr(item, 'name', None) or getattr(item, 'title', None)
-                    if album_id and title:
-                        serializable_results.append([str(album_id), title])
-                    else:
-                        # 最后尝试作为序列访问
-                        album_id, title = item[0], item[1]
-                        serializable_results.append([str(album_id), title])
-                except (IndexError, AttributeError, TypeError) as e:
-                    logger.warning(f"无法序列化搜索结果项: {item}, 错误: {e}")
-        
-        search_states[str(user_id)] = {
-            "query": search_query,
-            "current_page": current_page,
-            "total_results": serializable_results,
-            "results_per_page": 10
-        }
-        
-        # 记录保存了多少条结果
-        logger.debug(f"为用户 {user_id} 保存了 {len(serializable_results)} 条搜索结果")
-        
-        self.save()
-
-    def get_search_state(self, user_id: int):
-        """获取用户的搜索状态"""
-        search_states = self.data.get("search_states", {})
-        return search_states.get(str(user_id))
-
-    def clear_search_state(self, user_id: int):
-        """清除用户的搜索状态"""
-        search_states = self.data.get("search_states", {})
-        if str(user_id) in search_states:
-            del search_states[str(user_id)]
-            self.save()
-
-    def check_search_keywords(self, search_query: str) -> bool:
-        """
-        检查搜索关键词是否包含禁止的关键词
-        
-        Args:
-            search_query: 搜索关键词
-            
-        Returns:
-            bool: 如果包含禁止关键词返回True，否则返回False
-        """
-        # 获取restricted_tags作为关键词检查基础
-        restricted_tags = self.data.setdefault("restricted_tags", [])
-        
-        # 将搜索关键词转为小写进行比较
-        search_query_lower = search_query.lower()
-        
-        # 检查是否包含任何禁止关键词
-        for tag in restricted_tags:
-            if tag.lower() in search_query_lower:
-                return True
-        
-        return False
 
 
+@dataclass
+class SearchState:
+    query: str
+    start_idx: int
+    total_results: List[str]
+    api_page: int
+    created_at: datetime = field(default_factory=datetime.now)
+
+    def is_expired(self, ttl_minutes: int = 30) -> bool:
+        return datetime.now() - self.created_at > timedelta(minutes=ttl_minutes)
+
+    @property
+    def has_more(self) -> bool:
+        """检查是否还有更多结果"""
+        return self.start_idx < len(self.total_results)
+
+class SearchManager:
+    def __init__(self, ttl_minutes: int = 30):
+        self.states: dict[str, SearchState] = {}
+        self.ttl_minutes = ttl_minutes
+
+    def get_state(self, user_id: str) -> Optional[SearchState]:
+        """获取用户的搜索状态,如果过期则返回None"""
+        state = self.states.get(user_id)
+        if state and state.is_expired(self.ttl_minutes):
+            del self.states[user_id]
+            return None
+        return state
+
+    def set_state(self, user_id: str, state: SearchState):
+        """设置用户的搜索状态"""
+        self.states[user_id] = state
+
+    def remove_state(self, user_id: str):
+        """移除用户的搜索状态"""
+        self.states.pop(user_id, None)
+
+    def clean_expired(self):
+        """清理所有过期的搜索状态"""
+        expired = [uid for uid, state in self.states.items()
+                  if state.is_expired(self.ttl_minutes)]
+        for uid in expired:
+            del self.states[uid]
+
+
+search_manager = SearchManager()
 data_manager = JmComicDataManager()

@@ -17,8 +17,6 @@ from PIL import Image, ImageFilter
 
 from .data_source import data_manager
 
-sem = asyncio.Semaphore(10)
-
 #region API与下载相关函数
 def get_photo_info(client: JmcomicClient, photo_id):
     """获取章节信息和 Bot 要发送的消息"""
@@ -61,8 +59,8 @@ async def download_photo_async(client: JmcomicClient, downloader: JmDownloader, 
 def search_album(client: JmcomicClient, search_query: str, page: int = 1):
     """搜索本子，支持指定页码"""
     try:
-        page_results = client.search_site(search_query=search_query, page=page)
-        return page_results
+        jmpage = client.search_site(search_query=search_query, page=page)
+        return jmpage
 
     except JsonResolveFailException as e:
         resp = e.resp
@@ -80,28 +78,27 @@ async def search_album_async(client: JmcomicClient, search_query: str, page: int
     return await asyncio.to_thread(search_album, client, search_query, page)
 
 
-async def download_avatar(album_id: int | str) -> BytesIO | None:
-    """下载本子封面，限制并发数量"""
-    async with sem:
-        for domain in JmModuleConfig.DOMAIN_IMAGE_LIST:
-            url = f"https://{domain}/media/albums/{album_id}.jpg"
+async def download_avatar(photo_id: int | str) -> BytesIO | None:
+    """下载本子封面"""
+    for domain in JmModuleConfig.DOMAIN_IMAGE_LIST:
+        url = f"https://{domain}/media/albums/{photo_id}.jpg"
 
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(url, timeout=40)
-                    response.raise_for_status()
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, timeout=40)
+                response.raise_for_status()
 
-                    if not response.content or len(response.content) < 1024:
-                        logger.warning(f"{album_id} 可能返回了错误页面，无法下载封面")
-                        return None
+                if not response.content or len(response.content) < 1024:
+                    logger.warning(f"{photo_id} 可能返回了错误页面，无法下载封面")
+                    return None
 
-                    return BytesIO(response.content)
+                return BytesIO(response.content)
 
-            except (httpx.HTTPStatusError, httpx.RequestError):
-                continue
+        except (httpx.HTTPStatusError, httpx.RequestError):
+            continue
 
-        logger.warning(f"{album_id} 封面下载失败：所有域名不可用")
-        return None
+    logger.warning(f"{photo_id} 封面下载失败：所有域名不可用")
+    return None
 
 
 def blur_image(image_bytes: BytesIO) -> BytesIO:
@@ -176,15 +173,17 @@ async def group_is_enabled(bot: Bot, event: MessageEvent) -> bool:
 
     return True
 
+#endregion
+
 def modify_pdf_md5(original_pdf_path, output_path):
     """
     修改PDF文件的MD5值，但保持文件内容可用
     通过在文件末尾添加随机字节来改变MD5
-    
+
     Args:
         original_pdf_path: 原始PDF文件路径
         output_path: 输出的PDF文件路径
-    
+
     Returns:
         bool: 是否成功修改
     """
@@ -192,10 +191,10 @@ def modify_pdf_md5(original_pdf_path, output_path):
         # 读取原始PDF
         with open(original_pdf_path, 'rb') as f:
             content = f.read()
-        
+
         # 生成随机字节
         random_bytes = struct.pack('d', random.random())
-        
+
         # 添加随机注释到PDF末尾
         # PDF规范允许在文件末尾添加注释，以%%EOF结尾
         # 我们在%%EOF之前添加随机内容作为注释
@@ -205,16 +204,14 @@ def modify_pdf_md5(original_pdf_path, output_path):
         else:
             # 如果没有，直接在末尾添加注释和EOF标记
             modified_content = content + b'\n% Random: ' + random_bytes + b'\n%%EOF'
-        
+
         # 写入修改后的内容
         with open(output_path, 'wb') as f:
             f.write(modified_content)
-        
+
         return True
     except Exception as e:
         logger.error(f"修改PDF MD5失败: {e}")
         return False
 
 check_group_and_user = Rule(group_is_enabled) & Rule(user_not_in_blacklist)
-
-#endregion

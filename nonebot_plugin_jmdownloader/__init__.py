@@ -3,10 +3,7 @@ import hashlib
 import os
 import random
 import shutil
-import struct
 import time
-from io import BytesIO
-from pathlib import Path
 
 from jmcomic import (JmcomicException, JmDownloader,
                      MissingAlbumPhotoException, create_option_by_str)
@@ -21,10 +18,10 @@ from nonebot.plugin import PluginMetadata
 
 from .config import (Config, cache_dir, config_data, plugin_cache_dir,
                      plugin_config)
-from .data_source import data_manager
+from .data_source import data_manager, search_manager, SearchState
 from .utils import (blur_image_async, check_group_and_user, check_permission,
-                    download_avatar, download_photo_async, modify_pdf_md5,
-                    get_photo_info_async, search_album_async,
+                    download_avatar, download_photo_async,
+                    get_photo_info_async, modify_pdf_md5, search_album_async,
                     send_forward_message)
 
 require("nonebot_plugin_apscheduler")
@@ -53,6 +50,7 @@ try:
 except JmcomicException as e:
     logger.error(f"初始化失败: { e }")
 
+results_per_page = plugin_config.jmcomic_results_per_page
 
 # region jm功能指令
 jm_download = on_command("jm下载", aliases={"JM下载"}, block=True, rule=check_group_and_user)
@@ -69,9 +67,11 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
         if user_limit <= 0:
             await jm_download.finish(MessageSegment.at(user_id) + f"你的下载次数已经用完了！")
 
-    photo = await get_photo_info_async(client, photo_id)
-    if photo == 0:
+    try:
+        photo = await get_photo_info_async(client, photo_id)
+    except MissingAlbumPhotoException:
         await jm_download.finish("未查找到本子")
+
     if photo is None:
         await jm_download.finish("查询时发生错误")
 
@@ -86,31 +86,36 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
         else:
             await jm_download.finish("该本子（或其tag）被禁止下载！")
 
-
     if str(user_id) not in bot.config.superusers:
         data_manager.decrease_user_limit(user_id, 1)
         user_limit_new = data_manager.get_user_limit(user_id)
-        await jm_download.send(
-            f"查询到jm{photo.id}: {photo.title}\ntags:{photo.tags}\n开始下载...你本周还有{user_limit_new}次下载次数！"
-        )
+        message = Message()
+        message += f"jm{photo.id} | {photo.title}\n"
+        message += f"🎨 作者: {photo.author}\n"
+        message += "🔖 标签: " + " ".join(f"#{tag}" for tag in photo.tags) + "\n"
+        message += f"开始下载...\n你本周还有{user_limit_new}次下载次数！"
+        await jm_download.send(message)
     else:
-        await jm_download.send(f"查询到jm{photo.id}: {photo.title}\ntags:{photo.tags}\n开始下载...")
+        message = Message()
+        message += f"jm{photo.id} | {photo.title}\n"
+        message += f"🎨 作者: {photo.author}\n"
+        message += "🔖 标签: " + " ".join(f"#{tag}" for tag in photo.tags) + "\n"
+        message += "开始下载..."
+        await jm_download.send(message)
 
     try:
-        # 检查PDF是否已存在
         pdf_path = f"{cache_dir}/{photo.id}.pdf"
-        
+
         # 如果不存在，则下载
         if not os.path.exists(pdf_path):
             if not await download_photo_async(client, downloader, photo):
                 await jm_download.finish("下载失败")
-        
+
         # 根据配置决定是否需要修改MD5
         if plugin_config.jmcomic_modify_real_md5:
-            # 生成随机后缀
             random_suffix = hashlib.md5(str(time.time() + random.random()).encode()).hexdigest()[:8]
             renamed_pdf_path = f"{cache_dir}/{photo.id}_{random_suffix}.pdf"
-            
+
             modified = await asyncio.to_thread(modify_pdf_md5, pdf_path, renamed_pdf_path)
             if modified:
                 pdf_path = renamed_pdf_path
@@ -124,7 +129,7 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
                         "upload_group_file",
                         group_id=event.group_id,
                         file=pdf_path,
-                        name=f"{photo.id}.pdf",  # 显示名称保持原样
+                        name=f"{photo.id}.pdf",
                         folder_id=folder_id
                     )
                 else:
@@ -144,34 +149,33 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
                 )
 
         except ActionFailed:
-           
-            await jm_download.finish("发送文件失败")
+            await jm_download.send("发送文件失败")
 
     except Exception as e:
         logger.error(f"处理PDF文件时出错: {e}")
-        await jm_download.finish("处理文件失败")
+        await jm_download.send("处理文件失败")
 
 
 jm_query = on_command("jm查询", aliases={"JM查询"}, block=True, rule=check_group_and_user)
 @jm_query.handle()
 async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
     photo_id = arg.extract_plain_text().strip()
-
     if not photo_id.isdigit():
         await jm_query.finish("请输入要查询的jm号")
-
     try:
         photo = await get_photo_info_async(client, photo_id)
     except MissingAlbumPhotoException:
         await jm_query.finish("未查找到本子")
-
     if photo is None:
         await jm_query.finish("查询时发生错误")
 
+    message = Message()
+    message += f"查询到jm{photo.id}: {photo.title}\n"
+    message += f"🎨 作者: {photo.author}\n"
+    tags_text = " ".join(f"#{tag}" for tag in photo.tags)
+    message += f"🔖 标签: {tags_text}\n"
 
-    message = Message(f'查询到jm{photo.id}: {photo.title}\ntags:{photo.tags}')
     avatar = await download_avatar(photo.id)
-
     if avatar:
         avatar = await blur_image_async(avatar)
         message += MessageSegment.image(avatar)
@@ -189,245 +193,148 @@ jm_search = on_command("jm搜索", aliases={"JM搜索"}, block=True, rule=check_
 @jm_search.handle()
 async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
     search_query = arg.extract_plain_text().strip()
-    user_id = event.user_id
-
     if not search_query:
         await jm_search.finish("请输入要搜索的内容")
 
-    # 检查搜索关键词是否包含禁止的标签
-    is_blocked = data_manager.check_search_keywords(search_query)
-    if is_blocked:
-        blocked_message = plugin_config.jmcomic_blocked_message
-        await jm_search.finish(blocked_message)
-
     searching_msg_id = (await jm_search.send("正在搜索中..."))['message_id']
 
-    # 使用原有的搜索函数
     page = await search_album_async(client, search_query)
-
     if page is None:
+        await bot.delete_msg(message_id=searching_msg_id)
         await jm_search.finish("搜索失败", reply_message=True)
-        
-    if not page:
+
+    search_results = list(page.iter_id())
+    if not search_results:
         await bot.delete_msg(message_id=searching_msg_id)
         await jm_search.finish("未搜索到本子", reply_message=True)
 
-    # 将搜索结果转换为列表，确保可以访问
-    search_results = list(page)
-    
-    # 保存完整的搜索结果到用户状态
-    data_manager.save_search_state(user_id, search_query, 0, search_results)
-    
-    # 记录日志
-    logger.debug(f"用户 {user_id} 搜索 '{search_query}' 共找到 {len(search_results)} 条结果")
-    
-    # 只显示前10个结果
-    results_per_page = 10
     current_results = search_results[:results_per_page]
+    photos = await asyncio.gather(*(get_photo_info_async(client, photo_id) for photo_id in current_results))
+    avatars = await asyncio.gather(*(download_avatar(photo_id) for photo_id in current_results))
 
-    # 获取详细信息和头像
-    album_details = await asyncio.gather(*(get_photo_info_async(client, album_id) for album_id, _ in current_results))
-    avatars = await asyncio.gather(*(download_avatar(album_id) for album_id, _ in current_results))
-
-    # 准备显示消息列表
     messages = []
     blocked_message = plugin_config.jmcomic_blocked_message
-    
-    for (album_id, title), photo, avatar in zip(current_results, album_details, avatars):
-        # 检查标签是否应该被屏蔽
-        if photo and hasattr(photo, 'tags') and photo.tags:
-            # 使用data_manager.has_restricted_tag替代blocked_tags检查
-            if data_manager.has_restricted_tag(photo.tags):
-                # 添加屏蔽提示到转发消息中
-                message = Message(blocked_message)
-                message_node = MessageSegment("node", {"name": "jm搜索结果", "content": message})
-                messages.append(message_node)
-                continue  # 处理下一个结果
-                
-        # 构建包含详细信息的消息
-        message = Message()
-        message += f"jm{album_id} | {title}\n"
-        
-        # 添加作者信息（如果有）
-        if photo and hasattr(photo, 'author') and photo.author:
-            message += f"👤 作者: {photo.author}\n"
-        
-        # 添加分类信息（如果有）
-        if photo and hasattr(photo, 'category') and photo.category:
-            category_info = f"📂 分类: {photo.category.title if hasattr(photo.category, 'title') else '未分类'}"
-            if hasattr(photo, 'category_sub') and photo.category_sub and hasattr(photo.category_sub, 'title'):
-                if photo.category_sub.title and photo.category_sub.title != photo.category.title:
-                    category_info += f" > {photo.category_sub.title}"
-            message += category_info + "\n"
-        
-        # 添加标签信息（如果有）
-        if photo and hasattr(photo, 'tags') and photo.tags:
-            tag_lines = []
-            current_line = "🏷️ 标签: "
-            tag_count = 0
-            
-            for tag in photo.tags:
-                if tag_count > 0 and tag_count % 4 == 0:
-                    tag_lines.append(current_line)
-                    current_line = "          "
-                current_line += f"#{tag} "
-                tag_count += 1
-                
-            if current_line != "          ":
-                tag_lines.append(current_line)
-                
-            message += "\n".join(tag_lines)
 
-        # 添加封面图片
-        if avatar:
-            avatar = await blur_image_async(avatar)
-            message += MessageSegment.image(avatar)
+    for photo, avatar in zip(photos, avatars):
+        if photo is None:
+            continue
 
-        message_node = MessageSegment("node", {"name": "jm搜索结果", "content": message})
+        if data_manager.has_restricted_tag(photo.tags):
+            message_node = MessageSegment("node", {
+                "name": "jm搜索结果",
+                "content": blocked_message
+            })
+        else:
+            node_content = Message()
+            node_content += f"jm{photo.id} | {photo.title}\n"
+            node_content += f"🎨 作者: {photo.author}\n"
+            node_content += "🔖 标签: " + " ".join(f"#{tag}" for tag in photo.tags)
+
+            if avatar:
+                avatar = await blur_image_async(avatar)
+                node_content += MessageSegment.image(avatar)
+
+            message_node = MessageSegment("node", {
+                "name": "jm搜索结果",
+                "content": node_content
+            })
         messages.append(message_node)
-
-    await bot.delete_msg(message_id=searching_msg_id)
 
     try:
         await send_forward_message(bot, event, messages)
-        
-        # 提示用户可以查看更多结果
-        if len(search_results) > results_per_page:
-            await jm_search.finish(f"搜索有更多结果，输入\"jm下一页\"查看更多")
-        else:
-            await jm_search.finish(f"已显示所有搜索结果")
     except ActionFailed:
         await jm_search.finish("搜索结果发送失败", reply_message=True)
 
+    if len(search_results) > results_per_page:
+        search_manager.set_state(str(event.user_id), SearchState(
+            query=search_query,
+            start_idx=results_per_page,
+            total_results=search_results,
+            api_page=1
+        ))
+        await jm_search.send("搜索有更多结果，使用'jm下一页'指令查看更多")
+    else:
+        await jm_search.send("已发送所有搜索结果")
 
-# 4. 添加下一页功能 - 修改为从当前页开始，而不是从第一页重新开始
+    await bot.delete_msg(message_id=searching_msg_id)
+
+
+
+
 jm_next_page = on_command("jm 下一页", aliases={"JM 下一页", "jm下一页", "JM下一页"}, block=True, rule=check_group_and_user)
 @jm_next_page.handle()
 async def handle_jm_next_page(bot: Bot, event: MessageEvent):
-    """处理下一页请求"""
-    user_id = event.user_id
-    search_state = data_manager.get_search_state(user_id)
-    
-    if not search_state:
+    state = search_manager.get_state(str(event.user_id))
+    if not state:
         await jm_next_page.finish("没有进行中的搜索，请先使用'jm搜索'命令")
-        return
-    
-    logger.debug(f"用户 {user_id} 的搜索状态: {search_state}")
-    
-    search_query = search_state["query"]
-    current_page = search_state["current_page"]
-    total_results = search_state["total_results"]
-    results_per_page = search_state["results_per_page"]
-    
-    # 计算下一页的起始和结束索引
-    start_idx = (current_page + 1) * results_per_page
-    
-    # 检查是否需要获取更多结果
-    if start_idx >= len(total_results):
-        # 尝试获取下一页搜索结果
-        next_page_num = current_page + 2  # API页数从1开始，当前页是0
-        searching_msg_id = (await jm_next_page.send("搜索更多结果中..."))['message_id']
-        
-        try:
-            next_page = await search_album_async(client, search_query, page=next_page_num)
-            await bot.delete_msg(message_id=searching_msg_id)
-            
-            if next_page and len(next_page) > 0:
-                # 有更多结果，添加到总结果中
-                next_page_results = list(next_page)
-                total_results.extend(next_page_results)
-                # 更新搜索状态
-                data_manager.save_search_state(user_id, search_query, current_page + 1, total_results)
+
+    searching_msg_id = (await jm_search.send("正在搜索更多内容..."))['message_id']
+
+    end_idx = state.start_idx + results_per_page
+    # 本次是否已经返回所有结果
+    is_return_all = False
+
+    # 需要尝试调用api搜索下一页？
+    if end_idx >= len(state.total_results):
+        # 如果当前页数是80的倍数，说明可能还有下一页，80是JM搜索每页数量
+        if len(state.total_results) % 80 == 0:
+            state.api_page += 1
+            next_page = await search_album_async(client, state.query, page=state.api_page)
+
+            if next_page is None:
+                logger.warning(f"获取下一页失败: {state.query} {state.api_page}")
+                is_return_all = True
             else:
-                # 没有更多结果了
-                await jm_next_page.finish("已经是最后一页了")
-                return
-        except Exception as e:
-            await bot.delete_msg(message_id=searching_msg_id)
-            logger.error(f"获取下一页搜索结果失败: {e}")
-            await jm_next_page.finish("获取更多结果失败")
-            return
-    
-    # 获取当前页的结果
-    end_idx = min(start_idx + results_per_page, len(total_results))
-    current_results = total_results[start_idx:end_idx]
-    
-    # 构建消息
+                next_results = list(next_page.iter_id())
+                # 严格检查是否达到最后一页
+                if not next_results or next_results[-1] == state.total_results[-1]:
+                    is_return_all = True
+                else:
+                    state.total_results.extend(next_results)
+        else:
+            is_return_all = True
+
+    current_results = state.total_results[state.start_idx:end_idx]
+    photos = await asyncio.gather(*(get_photo_info_async(client, album_id) for album_id in current_results))
+    avatars = await asyncio.gather(*(download_avatar(album_id) for album_id in current_results))
+
     messages = []
     blocked_message = plugin_config.jmcomic_blocked_message
-    
-    # 获取详细信息和头像
-    album_details = await asyncio.gather(*(get_photo_info_async(client, album_id) for album_id, _ in current_results))
-    avatars = await asyncio.gather(*(download_avatar(album_id) for album_id, _ in current_results))
-    
-    for (album_id, title), photo, avatar in zip(current_results, album_details, avatars):
-        # 检查标签是否应该被屏蔽 - 改用data_manager.has_restricted_tag
-        if photo and hasattr(photo, 'tags') and photo.tags:
-            # 使用data_manager.has_restricted_tag检查
-            if data_manager.has_restricted_tag(photo.tags):
-                # 添加屏蔽提示到转发消息中
-                message = Message(blocked_message)
-                message_node = MessageSegment("node", {"name": "jm搜索结果", "content": message})
-                messages.append(message_node)
-                continue  # 处理下一个结果
-        
-        # 构建包含详细信息的消息
-        message = Message()
-        message += f"jm{album_id} | {title}\n"
-        
-        # 添加作者信息（如果有）
-        if photo and hasattr(photo, 'author') and photo.author:
-            message += f"👤 作者: {photo.author}\n"
-        
-        # 添加分类信息（如果有）
-        if photo and hasattr(photo, 'category') and photo.category:
-            category_info = f"📂 分类: {photo.category.title if hasattr(photo.category, 'title') else '未分类'}"
-            if hasattr(photo, 'category_sub') and photo.category_sub and hasattr(photo.category_sub, 'title'):
-                if photo.category_sub.title and photo.category_sub.title != photo.category.title:
-                    category_info += f" > {photo.category_sub.title}"
-            message += category_info + "\n"
-        
-        # 添加标签信息（如果有）
-        if photo and hasattr(photo, 'tags') and photo.tags:
-            tag_lines = []
-            current_line = "🏷️ 标签: "
-            tag_count = 0
-            
-            for tag in photo.tags:
-                if tag_count > 0 and tag_count % 4 == 0:
-                    tag_lines.append(current_line)
-                    current_line = "          "
-                current_line += f"#{tag} "
-                tag_count += 1
-                
-            if current_line != "          ":
-                tag_lines.append(current_line)
-                
-            message += "\n".join(tag_lines)
 
-        # 添加封面图片
-        if avatar:
-            avatar = await blur_image_async(avatar)
-            message += MessageSegment.image(avatar)
+    for photo, avatar in zip(photos, avatars):
+        if photo is None:
+            continue
 
-        message_node = MessageSegment("node", {"name": "jm搜索结果", "content": message})
+        if data_manager.has_restricted_tag(photo.tags):
+            message_node = MessageSegment("node", {"name": "jm搜索结果", "content": blocked_message})
+        else:
+            node_content = Message()
+            node_content += f"jm{photo.id} | {photo.title}\n"
+            node_content += f"🎨 作者: {photo.author}\n"
+            node_content += "🔖 标签: " + " ".join(f"#{tag}" for tag in photo.tags)
+
+            if avatar:
+                avatar = await blur_image_async(avatar)
+                node_content += MessageSegment.image(avatar)
+
+            message_node = MessageSegment("node", {"name": "jm搜索结果", "content": node_content})
         messages.append(message_node)
-    
+
     try:
         await send_forward_message(bot, event, messages)
-        
-        # 更新搜索状态，增加页码
-        data_manager.save_search_state(user_id, search_query, current_page + 1, total_results)
-        
-        # 检查是否还有更多结果
-        has_more = (end_idx < len(total_results)) or (end_idx % results_per_page == 0)
-        
-        if has_more:
-            await jm_next_page.finish(f"输入\"jm下一页\"查看更多结果")
-        else:
-            await jm_next_page.finish(f"已显示所有搜索结果")
     except ActionFailed:
-        await jm_next_page.finish("搜索结果发送失败", reply_message=True)
+        search_manager.remove_state(str(event.user_id))
+        await bot.delete_msg(message_id=searching_msg_id)
+        await jm_next_page.finish("下一页结果发送失败", reply_message=True)
+
+    if is_return_all:
+        search_manager.remove_state(str(event.user_id))
+        await jm_next_page.send("已显示所有搜索结果")
+    else:
+        await jm_next_page.send("搜索有更多结果，使用'jm下一页'指令查看更多")
+        state.start_idx = end_idx
+
+    await bot.delete_msg(message_id=searching_msg_id)
 
 
 jm_set_folder = on_command("jm设置文件夹", aliases={"JM设置文件夹"}, permission=SUPERUSER | GROUP_ADMIN | GROUP_OWNER, block=True)
@@ -683,3 +590,8 @@ async def clear_cache_dir():
             logger.info(f"已成功清理缓存目录：{cache_dir}")
     except Exception as e:
         logger.error(f"清理缓存目录失败：{e}")
+
+@scheduler.scheduled_job("interval", minutes=10)
+async def clean_expired_search_states():
+    """ 定期清理过期的搜索状态 """
+    search_manager.clean_expired()
