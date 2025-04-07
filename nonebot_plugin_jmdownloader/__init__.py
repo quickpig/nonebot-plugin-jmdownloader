@@ -5,9 +5,10 @@ import random
 import shutil
 import time
 
+from httpx import get
 from jmcomic import (JmcomicException, JmDownloader,
                      MissingAlbumPhotoException, create_option_by_str)
-from nonebot import logger, on_command, require
+from nonebot import logger, on_command, require, get_bot
 from nonebot.adapters.onebot.v11 import (GROUP_ADMIN, GROUP_OWNER,
                                          ActionFailed, Bot, GroupMessageEvent,
                                          Message, MessageEvent, MessageSegment,
@@ -51,6 +52,7 @@ except JmcomicException as e:
     logger.error(f"初始化失败: { e }")
 
 results_per_page = plugin_config.jmcomic_results_per_page
+
 
 # region jm功能指令
 jm_download = on_command("jm下载", aliases={"JM下载"}, block=True, rule=check_group_and_user)
@@ -180,7 +182,7 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
         avatar = await blur_image_async(avatar)
         message += MessageSegment.image(avatar)
 
-    message_node = MessageSegment("node", {"name": "jm查询结果", "content": message})
+    message_node = MessageSegment("node", {"name": "jm查询结果", "uin": bot.self_id, "content": message})
     messages = [message_node]
 
     try:
@@ -222,6 +224,7 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
         if data_manager.has_restricted_tag(photo.tags):
             message_node = MessageSegment("node", {
                 "name": "jm搜索结果",
+                "uin": bot.self_id,
                 "content": blocked_message
             })
         else:
@@ -236,6 +239,7 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
 
             message_node = MessageSegment("node", {
                 "name": "jm搜索结果",
+                "uin": bot.self_id,
                 "content": node_content
             })
         messages.append(message_node)
@@ -306,7 +310,11 @@ async def handle_jm_next_page(bot: Bot, event: MessageEvent):
             continue
 
         if data_manager.has_restricted_tag(photo.tags):
-            message_node = MessageSegment("node", {"name": "jm搜索结果", "content": blocked_message})
+            message_node = MessageSegment("node", {
+                "name": "jm搜索结果",
+                "uin": bot.self_id,
+                "content": blocked_message
+            })
         else:
             node_content = Message()
             node_content += f"jm{photo.id} | {photo.title}\n"
@@ -317,7 +325,11 @@ async def handle_jm_next_page(bot: Bot, event: MessageEvent):
                 avatar = await blur_image_async(avatar)
                 node_content += MessageSegment.image(avatar)
 
-            message_node = MessageSegment("node", {"name": "jm搜索结果", "content": node_content})
+            message_node = MessageSegment("node", {
+                "name": "jm搜索结果",
+                "uin": bot.self_id,
+                "content": node_content
+            })
         messages.append(message_node)
 
     try:
