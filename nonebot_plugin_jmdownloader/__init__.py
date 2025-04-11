@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import os
 import random
+from re import A
 import shutil
 import time
 
@@ -88,29 +89,32 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
         else:
             await jm_download.finish("该本子（或其tag）被禁止下载！")
 
-    if str(user_id) not in bot.config.superusers:
-        data_manager.decrease_user_limit(user_id, 1)
-        user_limit_new = data_manager.get_user_limit(user_id)
-        message = Message()
-        message += f"jm{photo.id} | {photo.title}\n"
-        message += f"🎨 作者: {photo.author}\n"
-        message += "🔖 标签: " + " ".join(f"#{tag}" for tag in photo.tags) + "\n"
-        message += f"开始下载...\n你本周还有{user_limit_new}次下载次数！"
-        await jm_download.send(message)
-    else:
-        message = Message()
-        message += f"jm{photo.id} | {photo.title}\n"
-        message += f"🎨 作者: {photo.author}\n"
-        message += "🔖 标签: " + " ".join(f"#{tag}" for tag in photo.tags) + "\n"
-        message += "开始下载..."
-        await jm_download.send(message)
+    try:
+        if str(user_id) not in bot.config.superusers:
+            data_manager.decrease_user_limit(user_id, 1)
+            user_limit_new = data_manager.get_user_limit(user_id)
+            message = Message()
+            message += f"jm{photo.id} | {photo.title}\n"
+            message += f"🎨 作者: {photo.author}\n"
+            message += "🔖 标签: " + " ".join(f"#{tag}" for tag in photo.tags) + "\n"
+            message += f"开始下载...\n你本周还有{user_limit_new}次下载次数！"
+            await jm_download.send(message)
+        else:
+            message = Message()
+            message += f"jm{photo.id} | {photo.title}\n"
+            message += f"🎨 作者: {photo.author}\n"
+            message += "🔖 标签: " + " ".join(f"#{tag}" for tag in photo.tags) + "\n"
+            message += "开始下载..."
+            await jm_download.send(message)
+    except ActionFailed:
+        await jm_download.send("本子信息可能被屏蔽，已开始下载")
 
     try:
         pdf_path = f"{cache_dir}/{photo.id}.pdf"
 
         # 如果不存在，则下载
         if not os.path.exists(pdf_path):
-            if not await download_photo_async(client, downloader, photo):
+            if not await download_photo_async(downloader, photo):
                 await jm_download.finish("下载失败")
 
         # 根据配置决定是否需要修改MD5

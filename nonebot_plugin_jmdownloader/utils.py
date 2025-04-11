@@ -43,17 +43,17 @@ async def get_photo_info_async(client: JmcomicClient, photo_id):
     return await asyncio.to_thread(get_photo_info, client, photo_id)
 
 
-def download_photo(client: JmcomicClient, downloader: JmDownloader, photo: JmPhotoDetail):
+def download_photo(downloader: JmDownloader, photo: JmPhotoDetail):
     try:
         with downloader as dler:
-            dler.download_by_photo_detail(photo, client)
+            dler.download_by_photo_detail(photo)
         return True
     except JmcomicException as e:
         logger.error(f"JMComic 下载失败: {e}")
         return False
 
-async def download_photo_async(client: JmcomicClient, downloader: JmDownloader, photo: JmPhotoDetail):
-    return await asyncio.to_thread(download_photo, client, downloader, photo)
+async def download_photo_async(downloader: JmDownloader, photo: JmPhotoDetail):
+    return await asyncio.to_thread(download_photo, downloader, photo)
 
 
 def search_album(client: JmcomicClient, search_query: str, page: int = 1):
