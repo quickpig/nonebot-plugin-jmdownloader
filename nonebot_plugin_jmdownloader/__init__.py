@@ -13,7 +13,7 @@ from nonebot import logger, on_command, require, get_bot
 from nonebot.adapters.onebot.v11 import (GROUP_ADMIN, GROUP_OWNER,
                                          ActionFailed, Bot, GroupMessageEvent,
                                          Message, MessageEvent, MessageSegment,
-                                         PrivateMessageEvent)
+                                         PrivateMessageEvent, NetworkError)
 from nonebot.params import ArgPlainText, CommandArg
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
@@ -108,15 +108,17 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
             await jm_download.send(message)
     except ActionFailed:
         await jm_download.send("本子信息可能被屏蔽，已开始下载")
+    except NetworkError as e:
+        logger.warning(f"{e},可能是协议端发送文件时间太长导致的报错")
+
+    pdf_path = f"{cache_dir}/{photo.id}.pdf"
+
+    # 如果不存在，则下载
+    if not os.path.exists(pdf_path):
+        if not await download_photo_async(downloader, photo):
+            await jm_download.finish("下载失败")
 
     try:
-        pdf_path = f"{cache_dir}/{photo.id}.pdf"
-
-        # 如果不存在，则下载
-        if not os.path.exists(pdf_path):
-            if not await download_photo_async(downloader, photo):
-                await jm_download.finish("下载失败")
-
         # 根据配置决定是否需要修改MD5
         if plugin_config.jmcomic_modify_real_md5:
             random_suffix = hashlib.md5(str(time.time() + random.random()).encode()).hexdigest()[:8]
@@ -125,41 +127,41 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
             modified = await asyncio.to_thread(modify_pdf_md5, pdf_path, renamed_pdf_path)
             if modified:
                 pdf_path = renamed_pdf_path
+    except Exception as e:
+        logger.error(f"处理PDF文件时出错: {e}")
+        await jm_download.finish("处理文件失败")
 
-        try:
-            if isinstance(event, GroupMessageEvent):
-                folder_id = data_manager.get_group_folder_id(event.group_id)
+    try:
+        if isinstance(event, GroupMessageEvent):
+            folder_id = data_manager.get_group_folder_id(event.group_id)
 
-                if folder_id:
-                    await bot.call_api(
-                        "upload_group_file",
-                        group_id=event.group_id,
-                        file=pdf_path,
-                        name=f"{photo.id}.pdf",
-                        folder_id=folder_id
-                    )
-                else:
-                    await bot.call_api(
-                        "upload_group_file",
-                        group_id=event.group_id,
-                        file=pdf_path,
-                        name=f"{photo.id}.pdf"
-                    )
-
-            elif isinstance(event, PrivateMessageEvent):
+            if folder_id:
                 await bot.call_api(
-                    "upload_private_file",
-                    user_id=event.user_id,
+                    "upload_group_file",
+                    group_id=event.group_id,
+                    file=pdf_path,
+                    name=f"{photo.id}.pdf",
+                    folder_id=folder_id
+                )
+            else:
+                await bot.call_api(
+                    "upload_group_file",
+                    group_id=event.group_id,
                     file=pdf_path,
                     name=f"{photo.id}.pdf"
                 )
 
-        except ActionFailed:
-            await jm_download.send("发送文件失败")
+        elif isinstance(event, PrivateMessageEvent):
+            await bot.call_api(
+                "upload_private_file",
+                user_id=event.user_id,
+                file=pdf_path,
+                name=f"{photo.id}.pdf"
+            )
 
-    except Exception as e:
-        logger.error(f"处理PDF文件时出错: {e}")
-        await jm_download.send("处理文件失败")
+    except ActionFailed:
+        await jm_download.send("发送文件失败")
+
 
 
 jm_query = on_command("jm查询", aliases={"JM查询"}, block=True, rule=check_group_and_user)
