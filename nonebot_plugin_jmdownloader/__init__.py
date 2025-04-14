@@ -61,11 +61,12 @@ jm_download = on_command("jm下载", aliases={"JM下载"}, block=True, rule=chec
 async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
     photo_id = arg.extract_plain_text().strip()
     user_id = event.user_id
+    is_superuser = str(user_id) in bot.config.superusers
 
     if not photo_id.isdigit():
         await jm_download.finish("请输入要下载的jm号")
 
-    if str(user_id) not in bot.config.superusers:
+    if not is_superuser:
         user_limit = data_manager.get_user_limit(user_id)
         if user_limit <= 0:
             await jm_download.finish(MessageSegment.at(user_id) + f"你的下载次数已经用完了！")
@@ -79,18 +80,24 @@ async def _(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
         await jm_download.finish("查询时发生错误")
 
     if data_manager.is_jm_id_restricted(photo.id) or data_manager.has_restricted_tag(photo.tags):
+
         if isinstance(event, GroupMessageEvent):
-            try:
-                await bot.set_group_ban(group_id=event.group_id, user_id=user_id, duration=86400)
-            except ActionFailed:
-                pass
-            data_manager.add_blacklist(event.group_id, user_id)
-            await jm_download.finish(MessageSegment.at(user_id) + "该本子（或其tag）被禁止下载!你已被加入本群jm黑名单")
+            if not is_superuser:
+                try:
+                    await bot.set_group_ban(group_id=event.group_id, user_id=user_id, duration=86400)
+                except ActionFailed:
+                    pass
+                data_manager.add_blacklist(event.group_id, user_id)
+                await jm_download.finish(MessageSegment.at(user_id) + "该本子（或其tag）被禁止下载!你已被加入本群jm黑名单")
+
+            else:
+                await jm_download.finish("该本子（或其tag）被禁止下载！")
+
         else:
             await jm_download.finish("该本子（或其tag）被禁止下载！")
 
     try:
-        if str(user_id) not in bot.config.superusers:
+        if not is_superuser:
             data_manager.decrease_user_limit(user_id, 1)
             user_limit_new = data_manager.get_user_limit(user_id)
             message = Message()
@@ -415,9 +422,6 @@ async def _(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
     group_id = event.group_id
     operator_id = event.user_id
 
-    if user_id == operator_id:
-        await jm_ban_user.finish("你拉黑你自己？")
-
     has_permission = await check_permission(bot, group_id, operator_id, user_id)
     if not has_permission:
         await jm_unban_user.finish("权限不足")
@@ -439,9 +443,6 @@ async def handle_jm_unban_user(bot: Bot, event: GroupMessageEvent, arg: Message 
     user_id = int(user_id)
     group_id = event.group_id
     operator_id = event.user_id
-
-    if user_id == operator_id:
-        await jm_ban_user.finish("想都别想！")
 
     has_permission = await check_permission(bot, group_id, operator_id, user_id)
     if not has_permission:
@@ -608,6 +609,7 @@ async def clear_cache_dir():
             logger.info(f"已成功清理缓存目录：{cache_dir}")
     except Exception as e:
         logger.error(f"清理缓存目录失败：{e}")
+
 
 @scheduler.scheduled_job("interval", minutes=10)
 async def clean_expired_search_states():

@@ -128,7 +128,7 @@ async def send_forward_message(bot: Bot, event: MessageEvent, messages: list):
 
 #region 权限相关
 async def check_permission(bot: Bot, group_id: int, operator_id: int, target_id: int) -> bool:
-    """增减群黑名单权限检查"""
+    """增减群黑名单权限检查，群主和超管拥有所有权限，管理员只能操作普通成员"""
     if str(operator_id) in bot.config.superusers:
         return True
 
@@ -142,10 +142,12 @@ async def check_permission(bot: Bot, group_id: int, operator_id: int, target_id:
         if operator_role == "owner":
             return True
 
-        if operator_role == "admin" and target_role in ["admin", "owner"]:
-            return False
+        if operator_role == "admin":
+            if target_role not in ["admin", "owner"]:
+                return True
 
-        return True
+        return False
+
     except ActionFailed as e:
         logger.error(f"无法获取群成员信息：{e}")
         return False
