@@ -16,7 +16,7 @@ from nonebot.adapters.onebot.v11 import (GROUP_ADMIN, GROUP_OWNER,
                                          PrivateMessageEvent, NetworkError)
 from nonebot.params import ArgPlainText, CommandArg
 from nonebot.permission import SUPERUSER
-from nonebot.plugin import PluginMetadata
+from nonebot.plugin import PluginMetadata, get_loaded_plugins
 
 from .config import (Config, cache_dir, config_data, plugin_cache_dir,
                      plugin_config)
@@ -36,7 +36,17 @@ __plugin_meta__ = PluginMetadata(
     usage="jm下载 [jm号]：下载指定jm号的本子\n"
           "jm查询 [jm号]：查询指定jm号的本子\n"
           "jm搜索 [关键词]：搜索包含关键词的本子\n"
-          "jm设置文件夹 [文件夹名]：设置本群的本子储存文件夹\n",
+          "jm下一页：查看搜索结果的下一页\n"
+          "jm设置文件夹 [文件夹名]：设置本群的本子储存文件夹\n"
+          "jm拉黑 @用户：将指定用户加入本群的jm黑名单\n"
+          "jm解除拉黑 @用户：将指定用户从本群的jm黑名单中移除\n"
+          "jm黑名单：查看当前群的jm黑名单列表\n"
+          "jm启用群 [群号]：启用指定群的jm功能\n"
+          "jm禁用群 [群号]：禁用指定群的jm功能\n"
+          "开启jm：启用本群的jm功能\n"
+          "关闭jm：禁用本群的jm功能\n"
+          "jm禁用id [jm号]：禁止指定jm号的本子下载，可用空格隔开多个id，以下同理\n"
+          "jm禁用tag [tag]：禁止指定tag的本子下载\n",
     type="application",  # library
     homepage="https://github.com/Misty02600/nonebot-plugin-jmdownloader",
     config=Config,
@@ -577,6 +587,13 @@ async def handle_jm_forbid_tag(bot: Bot, event: MessageEvent, arg: Message = Com
         msg += "以下tag已加入禁止下载列表：\n" + " ".join(success_list)
 
     await jm_forbid_tag.finish(msg.strip() or "没有做任何处理")
+
+jm_help = on_command("jm帮助", aliases={"JM帮助"}, block=True)
+@jm_help.handle()
+async def handle_jm_help(bot: Bot, event: MessageEvent):
+    help_message = __plugin_meta__.usage
+
+    await jm_help.finish(help_message.strip() or "没有可用的指令帮助信息。")
 
 # endregion
 
